@@ -1,6 +1,6 @@
 [package]
 name = "auq-wizard"
-version = "0.2.2"
+version = "0.2.4"
 description = "A GUI question broker for coding agents"
 authors = ["Ziward"]
 license = "MIT"
