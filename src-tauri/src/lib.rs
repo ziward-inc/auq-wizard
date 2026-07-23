@@ -53,6 +53,7 @@ pub fn run() {
             broker::cancel_request,
             install::get_integration_status,
             install::install_integrations,
+            install::trust_codex_hooks,
             preferences::get_auq_enabled,
             preferences::set_auq_enabled,
         ])

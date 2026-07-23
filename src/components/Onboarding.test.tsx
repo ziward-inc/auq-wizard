@@ -13,6 +13,8 @@ const STATUS: IntegrationStatus = {
   claudeHook: true,
   codexSkill: true,
   codexHooks: true,
+  codexHookTrust: "trusted",
+  codexHookReviews: [],
   autostart: true,
   pathReady: true,
   warnings: [],
@@ -26,6 +28,7 @@ describe("Onboarding", () => {
         status={STATUS}
         onInstall={onInstall}
         onSetEnabled={vi.fn().mockResolvedValue(undefined)}
+        onTrustCodexHooks={vi.fn().mockResolvedValue(undefined)}
       />,
     )
 
@@ -76,6 +79,7 @@ describe("Onboarding", () => {
         status={{ ...STATUS, cli: false }}
         onInstall={onInstall}
         onSetEnabled={vi.fn().mockResolvedValue(undefined)}
+        onTrustCodexHooks={vi.fn().mockResolvedValue(undefined)}
       />,
     )
 
@@ -103,6 +107,7 @@ describe("Onboarding", () => {
         status={{ ...STATUS, cli: false, cliConflict: true }}
         onInstall={onInstall}
         onSetEnabled={vi.fn().mockResolvedValue(undefined)}
+        onTrustCodexHooks={vi.fn().mockResolvedValue(undefined)}
       />,
     )
 
@@ -130,6 +135,7 @@ describe("Onboarding", () => {
         status={STATUS}
         onInstall={vi.fn().mockResolvedValue(undefined)}
         onSetEnabled={onSetEnabled}
+        onTrustCodexHooks={vi.fn().mockResolvedValue(undefined)}
       />,
     )
 
@@ -145,6 +151,7 @@ describe("Onboarding", () => {
         status={{ ...STATUS, auqEnabled: false }}
         onInstall={vi.fn().mockResolvedValue(undefined)}
         onSetEnabled={onSetEnabled}
+        onTrustCodexHooks={vi.fn().mockResolvedValue(undefined)}
       />,
     )
 
@@ -152,5 +159,88 @@ describe("Onboarding", () => {
     await userEvent.click(screen.getByRole("button", { name: "Enable AUQ" }))
 
     expect(onSetEnabled).toHaveBeenCalledWith(true)
+  })
+
+  it("reviews the exact AUQ hooks before trusting them", async () => {
+    const onTrustCodexHooks = vi.fn().mockResolvedValue(undefined)
+    render(
+      <Onboarding
+        status={{
+          ...STATUS,
+          codexHookTrust: "untrusted",
+          codexHookReviews: [
+            {
+              eventName: "PreToolUse",
+              command: "'/Users/test/.local/bin/auq' codex-hook pre-tool-use",
+            },
+            {
+              eventName: "PermissionRequest",
+              command: "'/Users/test/.local/bin/auq' codex-hook permission-request",
+            },
+          ],
+        }}
+        onInstall={vi.fn().mockResolvedValue(undefined)}
+        onSetEnabled={vi.fn().mockResolvedValue(undefined)}
+        onTrustCodexHooks={onTrustCodexHooks}
+      />,
+    )
+
+    expect(screen.getByText("Codex hooks need approval")).toBeInTheDocument()
+    expect(screen.getByText("3/4 ready")).toBeInTheDocument()
+    expect(screen.getAllByText("Needs approval")).toHaveLength(1)
+    await userEvent.click(screen.getByRole("button", { name: "Review & trust" }))
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Trust AUQ hooks?")
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "'/Users/test/.local/bin/auq' codex-hook pre-tool-use",
+    )
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "'/Users/test/.local/bin/auq' codex-hook permission-request",
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "Trust hooks" }))
+    expect(onTrustCodexHooks).toHaveBeenCalledOnce()
+  })
+
+  it("does not offer direct trust when Codex hook status is unavailable", () => {
+    render(
+      <Onboarding
+        status={{ ...STATUS, codexHookTrust: "unavailable" }}
+        onInstall={vi.fn().mockResolvedValue(undefined)}
+        onSetEnabled={vi.fn().mockResolvedValue(undefined)}
+        onTrustCodexHooks={vi.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    expect(screen.getByText("Codex hook status unavailable")).toBeInTheDocument()
+    expect(screen.getByText("Status unavailable")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Review & trust" })).not.toBeInTheDocument()
+  })
+
+  it("keeps a failed Codex trust error visible in the confirmation", async () => {
+    render(
+      <Onboarding
+        status={{
+          ...STATUS,
+          codexHookTrust: "untrusted",
+          codexHookReviews: [
+            { eventName: "PreToolUse", command: "auq codex-hook pre-tool-use" },
+            {
+              eventName: "PermissionRequest",
+              command: "auq codex-hook permission-request",
+            },
+          ],
+        }}
+        onInstall={vi.fn().mockResolvedValue(undefined)}
+        onSetEnabled={vi.fn().mockResolvedValue(undefined)}
+        onTrustCodexHooks={vi.fn().mockRejectedValue(new Error("Codex trust failed"))}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: "Review & trust" }))
+    await userEvent.click(screen.getByRole("button", { name: "Trust hooks" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Codex trust failed")
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument()
   })
 })

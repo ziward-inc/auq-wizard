@@ -56,7 +56,7 @@ Open the packaged app and select **Install integrations**. The installer:
 - merges hook entries into existing settings and creates timestamped backups;
 - enables login launch through the Tauri autostart plugin.
 
-If `~/.local/bin` is not in `PATH`, add it to the shell configuration. In Codex, open `/hooks` once to review and trust the installed user hooks.
+If `~/.local/bin` is not in `PATH`, add it to the shell configuration. AUQ Wizard checks the installed Codex hooks and offers **Review & trust** when approval is required. If the Codex hook status is unavailable, open `/hooks` in Codex to review them there.
 
 Use **Pause AUQ** in the app before working from mobile or through a remote session. Both installed skills fall back to the current agent's native input channel when the CLI is unavailable or routing is paused.
 

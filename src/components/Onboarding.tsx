@@ -1,3 +1,4 @@
+import { AlertDialog } from "@base-ui/react/alert-dialog"
 import { Check, CircleAlert, Command, Download, Power, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 
@@ -9,6 +10,7 @@ type OnboardingProps = {
   status: IntegrationStatus | null
   onInstall: (options: InstallOptions) => Promise<void>
   onSetEnabled: (enabled: boolean) => Promise<void>
+  onTrustCodexHooks: () => Promise<void>
 }
 
 const ITEMS = [
@@ -40,6 +42,11 @@ function installed(status: IntegrationStatus | null, key: (typeof ITEMS)[number]
   return status[key]
 }
 
+function ready(status: IntegrationStatus | null, key: (typeof ITEMS)[number]["key"]) {
+  if (key === "codex") return installed(status, key) && status?.codexHookTrust === "trusted"
+  return installed(status, key)
+}
+
 type IntegrationKey = (typeof ITEMS)[number]["key"]
 type InstallTarget = IntegrationKey | "missing"
 
@@ -66,14 +73,45 @@ function reinstallOptions(key: IntegrationKey): InstallOptions {
   }
 }
 
-export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps) {
+export function Onboarding({
+  status,
+  onInstall,
+  onSetEnabled,
+  onTrustCodexHooks,
+}: OnboardingProps) {
   const [installingTarget, setInstallingTarget] = useState<InstallTarget | null>(null)
   const [confirmingReplace, setConfirmingReplace] = useState(false)
+  const [confirmingCodexTrust, setConfirmingCodexTrust] = useState(false)
+  const [trustingCodexHooks, setTrustingCodexHooks] = useState(false)
+  const [codexTrustError, setCodexTrustError] = useState<string | null>(null)
   const [changingRouting, setChangingRouting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const installing = installingTarget !== null
   const installedCount = ITEMS.filter((item) => installed(status, item.key)).length
+  const readyCount = ITEMS.filter((item) => ready(status, item.key)).length
   const allInstalled = installedCount === ITEMS.length
+  const codexTrustNeedsReview =
+    status?.codexHookTrust === "untrusted" || status?.codexHookTrust === "modified"
+  const showCodexTrustStatus =
+    status?.codexHooks === true &&
+    status.codexHookTrust !== "trusted" &&
+    status.codexHookTrust !== "notInstalled"
+  const codexTrustTitle =
+    status?.codexHookTrust === "modified"
+      ? "Codex hooks changed"
+      : status?.codexHookTrust === "disabled"
+        ? "Codex hooks aren't active"
+        : status?.codexHookTrust === "unavailable"
+          ? "Codex hook status unavailable"
+          : "Codex hooks need approval"
+  const codexTrustDescription =
+    status?.codexHookTrust === "modified"
+      ? "Review and trust the updated AUQ hooks before Codex can use them."
+      : status?.codexHookTrust === "disabled"
+        ? "Enable the AUQ hooks in Codex /hooks before Codex can use them."
+        : status?.codexHookTrust === "unavailable"
+          ? "Open /hooks in Codex to review the installed AUQ hooks."
+          : "Review and trust the AUQ hooks before Codex can use them."
 
   const runInstall = async (options: InstallOptions, target: InstallTarget) => {
     setInstallingTarget(target)
@@ -85,6 +123,19 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
       setError(String(installError))
     } finally {
       setInstallingTarget(null)
+    }
+  }
+
+  const runCodexTrust = async () => {
+    setTrustingCodexHooks(true)
+    setCodexTrustError(null)
+    try {
+      await onTrustCodexHooks()
+      setConfirmingCodexTrust(false)
+    } catch (trustError) {
+      setCodexTrustError(String(trustError))
+    } finally {
+      setTrustingCodexHooks(false)
     }
   }
 
@@ -231,14 +282,15 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
                 </p>
               </div>
               <span className="rounded-full border bg-background px-2.5 py-1 font-mono text-[11px] text-muted-foreground tabular-nums">
-                {installedCount}/{ITEMS.length} ready
+                {readyCount}/{ITEMS.length} ready
               </span>
             </div>
 
             <div className="divide-y">
               {ITEMS.map((item) => {
                 const Icon = item.icon
-                const done = installed(status, item.key)
+                const present = installed(status, item.key)
+                const done = ready(status, item.key)
                 return (
                   <div key={item.key} className="flex items-center gap-3 px-4 py-3">
                     <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -255,7 +307,9 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
                         className={
                           done
                             ? "flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-                            : "text-xs text-muted-foreground"
+                            : item.key === "codex" && present
+                              ? "text-xs font-medium text-amber-600 dark:text-amber-400"
+                              : "text-xs text-muted-foreground"
                         }
                       >
                         {done ? (
@@ -265,11 +319,19 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
                           </>
                         ) : item.key === "cli" && status?.cliConflict ? (
                           "Needs approval"
+                        ) : item.key === "codex" && present ? (
+                          status?.codexHookTrust === "disabled" ? (
+                            "Disabled"
+                          ) : status?.codexHookTrust === "unavailable" ? (
+                            "Status unavailable"
+                          ) : (
+                            "Needs approval"
+                          )
                         ) : (
                           "Not installed"
                         )}
                       </span>
-                      {done ? (
+                      {present ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -290,9 +352,32 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
         </div>
 
         <p className="mt-4 text-xs leading-5 text-muted-foreground">
-          Existing settings are merged and backed up. Codex asks you to trust the new hooks in
-          <code>/hooks</code>.
+          Existing settings are merged and backed up. Codex rechecks trust whenever a hook
+          definition changes.
         </p>
+
+        {showCodexTrustStatus ? (
+          <div className="mt-3 flex items-start gap-3 rounded-lg border border-amber-400/50 bg-amber-50 p-3.5 text-amber-950 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">{codexTrustTitle}</p>
+              <p className="mt-1 text-xs leading-5">{codexTrustDescription}</p>
+            </div>
+            {codexTrustNeedsReview && status.codexHookReviews.length === 2 ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={installing || trustingCodexHooks}
+                onClick={() => {
+                  setConfirmingCodexTrust(true)
+                  setCodexTrustError(null)
+                }}
+              >
+                Review & trust
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         {status?.warnings.map((warning) => (
           <div
@@ -309,6 +394,55 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
           </p>
         ) : null}
       </div>
+
+      <AlertDialog.Root open={confirmingCodexTrust} onOpenChange={setConfirmingCodexTrust}>
+        <AlertDialog.Portal>
+          <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[2px]" />
+          <AlertDialog.Viewport className="fixed inset-0 z-50 flex items-center justify-center p-5">
+            <AlertDialog.Popup className="w-full max-w-lg rounded-xl border bg-card p-5 text-card-foreground shadow-2xl outline-none">
+              <AlertDialog.Title className="text-base font-semibold">
+                Trust AUQ hooks?
+              </AlertDialog.Title>
+              <AlertDialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
+                Codex will allow these hooks to validate AUQ commands. If their definitions change,
+                you’ll need to review them again.
+              </AlertDialog.Description>
+              <div className="mt-4 space-y-2">
+                {status?.codexHookReviews.map((hook) => (
+                  <div key={hook.eventName} className="rounded-lg border bg-muted/40 p-3">
+                    <p className="text-xs font-semibold">{hook.eventName}</p>
+                    <code className="mt-1.5 block overflow-x-auto text-[11px] leading-5 whitespace-nowrap text-muted-foreground">
+                      {hook.command}
+                    </code>
+                  </div>
+                ))}
+              </div>
+              {codexTrustError ? (
+                <p role="alert" className="mt-3 text-sm text-destructive">
+                  {codexTrustError}
+                </p>
+              ) : null}
+              <div className="mt-5 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={trustingCodexHooks}
+                  onClick={() => setConfirmingCodexTrust(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={trustingCodexHooks}
+                  onClick={() => void runCodexTrust()}
+                >
+                  {trustingCodexHooks ? "Trusting…" : "Trust hooks"}
+                </Button>
+              </div>
+            </AlertDialog.Popup>
+          </AlertDialog.Viewport>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </main>
   )
 }

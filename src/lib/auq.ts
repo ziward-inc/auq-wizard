@@ -73,6 +73,11 @@ export type IntegrationStatus = {
   claudeHook: boolean
   codexSkill: boolean
   codexHooks: boolean
+  codexHookTrust: "unavailable" | "notInstalled" | "trusted" | "untrusted" | "modified" | "disabled"
+  codexHookReviews: {
+    eventName: string
+    command: string
+  }[]
   autostart: boolean
   pathReady: boolean
   warnings: string[]
@@ -89,4 +94,5 @@ export const auqApi = {
   setEnabled: (enabled: boolean) => invoke<boolean>("set_auq_enabled", { enabled }),
   install: (options: InstallOptions) =>
     invoke<IntegrationStatus>("install_integrations", { options }),
+  trustCodexHooks: () => invoke<IntegrationStatus>("trust_codex_hooks"),
 }

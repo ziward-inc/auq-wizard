@@ -38,9 +38,20 @@ export default function App() {
     }
   }, [])
 
+  const refreshQueue = useCallback(async () => {
+    try {
+      const [active, queue] = await Promise.all([auqApi.active(), auqApi.summary()])
+      setRequest(active)
+      setSummary(queue)
+      setError(null)
+    } catch (refreshError) {
+      setError(String(refreshError))
+    }
+  }, [])
+
   useEffect(() => {
     refresh()
-    const unlistenPromise = listen<QueueSummary>("queue-changed", () => refresh())
+    const unlistenPromise = listen<QueueSummary>("queue-changed", () => refreshQueue())
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") getCurrentWindow().hide()
     }
@@ -49,18 +60,18 @@ export default function App() {
       window.removeEventListener("keydown", onKeyDown)
       unlistenPromise.then((unlisten) => unlisten())
     }
-  }, [refresh])
+  }, [refresh, refreshQueue])
 
   const answer = async (result: AnswerPayload) => {
     if (!request) return
     await auqApi.answer(request.requestId, result)
-    await refresh()
+    await refreshQueue()
   }
 
   const cancel = async () => {
     if (!request) return
     await auqApi.cancel(request.requestId)
-    await refresh()
+    await refreshQueue()
   }
 
   const install = async (options: InstallOptions) => {
@@ -71,6 +82,11 @@ export default function App() {
   const setEnabled = async (enabled: boolean) => {
     await auqApi.setEnabled(enabled)
     await refresh()
+  }
+
+  const trustCodexHooks = async () => {
+    const status = await auqApi.trustCodexHooks()
+    setIntegrationStatus(status)
   }
 
   return (
@@ -93,7 +109,12 @@ export default function App() {
             onCancel={cancel}
           />
         ) : (
-          <Onboarding status={integrationStatus} onInstall={install} onSetEnabled={setEnabled} />
+          <Onboarding
+            status={integrationStatus}
+            onInstall={install}
+            onSetEnabled={setEnabled}
+            onTrustCodexHooks={trustCodexHooks}
+          />
         )}
       </div>
     </TooltipProvider>
