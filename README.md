@@ -47,6 +47,46 @@ For local development, the developer starts the Tauri dev process:
 pnpm tauri dev
 ```
 
+## Release
+
+Publish a new Apple Silicon DMG release from a clean `main` checkout. Choose a new patch, minor, or major version; never reuse an existing tag. Update the version consistently in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` before building. The Tauri build updates `src-tauri/Cargo.lock` when needed.
+
+```bash
+VERSION=0.2.3
+
+pnpm install
+pnpm check
+pnpm test
+pnpm test:rust
+pnpm tauri build
+
+DMG="src-tauri/target/release/bundle/dmg/auq-wizard_${VERSION}_aarch64.dmg"
+CHECKSUM="${DMG}.sha256"
+test -f "$DMG"
+shasum -a 256 "$DMG" | awk -v name="$(basename "$DMG")" '{ print $1 "  " name }' > "$CHECKSUM"
+
+git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+git commit -m "Release v${VERSION}"
+git push origin main
+
+test -z "$(git ls-remote --tags origin "refs/tags/v${VERSION}")"
+git tag "v${VERSION}"
+git push origin "v${VERSION}"
+
+gh release create "v${VERSION}" "$DMG" "$CHECKSUM" \
+  --verify-tag \
+  --latest \
+  --title "AUQ Wizard v${VERSION}" \
+  --generate-notes
+```
+
+Verify that the latest release contains both the DMG and its checksum. The checksum asset must be named exactly `auq-wizard_<version>_aarch64.dmg.sha256`, because `install.sh` selects that filename before installing.
+
+```bash
+gh api repos/ziward-inc/auq-wizard/releases/latest \
+  --jq '{tag_name: .tag_name, assets: [.assets[] | {name, size, digest}]}'
+```
+
 ## Install integrations
 
 Open the packaged app and select **Install integrations**. The installer:
