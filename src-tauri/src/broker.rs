@@ -156,8 +156,15 @@ async fn handle_client(
         ClientMessage::Ask {
             request_id,
             payload,
+            origin,
+            context,
             ..
-        } => match broker.database.insert_or_get(&request_id, &payload) {
+        } => match broker.database.insert_or_get(
+            &request_id,
+            &payload,
+            origin.as_ref(),
+            context.as_ref(),
+        ) {
             Ok(request) => {
                 send(
                     &mut framed,

@@ -99,8 +99,35 @@ function isAnswered(values: WizardValues, question: Question) {
   return Boolean(selection && (selection.values.length > 0 || selection.other.trim()))
 }
 
+function projectName(request: StoredRequest) {
+  if (request.origin?.projectName) return request.origin.projectName
+  const path = request.origin?.projectRoot ?? request.origin?.cwd
+  return path?.split(/[\\/]/).filter(Boolean).at(-1) ?? "Unknown project"
+}
+
+function agentName(agent?: string) {
+  if (!agent) return "Unknown source"
+  if (agent.toLowerCase() === "codex") return "Codex"
+  if (agent.toLowerCase() === "claude") return "Claude Code"
+  if (agent.toLowerCase() === "cli") return "CLI"
+  return agent
+}
+
+function requestAge(createdAt: number) {
+  const elapsed = Math.max(0, Date.now() - createdAt)
+  const minutes = Math.floor(elapsed / 60_000)
+  if (minutes < 1) return "Just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 export function QuestionWizard({ request, pendingCount, onSubmit, onCancel }: QuestionWizardProps) {
   const questions = request.payload.questions
+  const origin = request.origin
+  const project = projectName(request)
+  const source = agentName(origin?.agent)
   const [questionIndex, setQuestionIndex] = useState(0)
   const [canceling, setCanceling] = useState(false)
   const schema = useMemo(() => validationSchema(questions), [questions])
@@ -126,7 +153,7 @@ export function QuestionWizard({ request, pendingCount, onSubmit, onCancel }: Qu
             </span>
             <div className="flex min-w-0 items-baseline gap-2.5">
               <p className="text-sm font-semibold tracking-tight">AUQ Wizard</p>
-              <span className="text-xs text-muted-foreground">Clarification request</span>
+              <span className="truncate text-xs text-muted-foreground">{project}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -149,11 +176,10 @@ export function QuestionWizard({ request, pendingCount, onSubmit, onCancel }: Qu
         <aside className="hidden w-52 shrink-0 flex-col border-r bg-sidebar/70 p-4 md:flex">
           <div className="border-b pb-4">
             <p className="text-[11px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
-              Request
+              Origin
             </p>
-            <code className="mt-1.5 block w-fit bg-transparent px-0 text-xs text-foreground">
-              {request.requestId.slice(0, 8)}
-            </code>
+            <p className="mt-1.5 break-words text-xs font-semibold text-foreground">{project}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{source}</p>
           </div>
 
           <Progress
@@ -211,6 +237,49 @@ export function QuestionWizard({ request, pendingCount, onSubmit, onCancel }: Qu
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col bg-background/60">
+          <div className="shrink-0 border-b bg-card/65 px-6 py-3 lg:px-8">
+            <div className="mx-auto max-w-2xl rounded-lg border bg-background/80 px-4 py-3 shadow-xs">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="min-w-0 truncate text-sm font-semibold">{project}</p>
+                <span className="rounded-full border bg-card px-2 py-0.5 text-[11px] text-muted-foreground">
+                  {source}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {requestAge(request.createdAt)}
+                </span>
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                {request.context?.summary ??
+                  "No task summary was provided for this clarification request."}
+              </p>
+              <details className="mt-2 text-[11px] text-muted-foreground">
+                <summary className="w-fit cursor-pointer list-none font-medium text-foreground/75 hover:text-foreground [&::-webkit-details-marker]:hidden">
+                  Details
+                </summary>
+                <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t pt-2">
+                  <dt>Path</dt>
+                  <dd className="break-all text-foreground/80">
+                    {origin?.cwd ?? origin?.projectRoot ?? "Unavailable"}
+                  </dd>
+                  {origin?.branch ? (
+                    <>
+                      <dt>Branch</dt>
+                      <dd className="break-all text-foreground/80">{origin.branch}</dd>
+                    </>
+                  ) : null}
+                  {origin?.sessionId ? (
+                    <>
+                      <dt>Session</dt>
+                      <dd className="break-all font-mono text-foreground/80">{origin.sessionId}</dd>
+                    </>
+                  ) : null}
+                  <dt>Request</dt>
+                  <dd className="break-all font-mono text-foreground/80">{request.requestId}</dd>
+                </dl>
+              </details>
+            </div>
+          </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 lg:px-8">
             <form.Field name="useGeneralResponse">
               {(modeField) =>

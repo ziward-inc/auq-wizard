@@ -75,6 +75,12 @@ Pausing affects only new requests. Requests that were already queued remain dura
 ```bash
 auq ask <<'AUQ_JSON'
 {
+  "origin": {
+    "agent": "codex"
+  },
+  "context": {
+    "summary": "Choose how this project should persist local data."
+  },
   "questions": [
     {
       "question": "Which persistence strategy should this use?",
@@ -95,6 +101,8 @@ auq ask <<'AUQ_JSON'
 }
 AUQ_JSON
 ```
+
+`origin` and `context` are optional for backward compatibility. When present, AUQ Wizard shows the agent and task summary before the question. The CLI replaces origin path fields with the current working directory and derived Git project context.
 
 Additional commands:
 

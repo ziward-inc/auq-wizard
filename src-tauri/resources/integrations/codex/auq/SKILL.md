@@ -11,6 +11,8 @@ Resolve discoverable facts yourself before asking. Do not ask for confirmation w
 
 Use an AUQ-specific adapter when the current Codex client exposes one in the active mode. Otherwise, use the AUQ CLI below before falling back to an unstructured question in the conversation. Default mode may not expose the native structured-input adapter; that is not a reason to skip AUQ.
 
+Always set `origin.agent` to `codex`. Add a `context.summary` of at most 200 characters that identifies the current task without repeating the question. Do not include secrets, credentials, or the full conversation. AUQ Wizard automatically adds the current project path and Git context.
+
 Submit one to five questions. Give each question a header of at most 30 characters and two to five meaningful options. Put the recommended option first and add `(Recommended)` to its label. Do not add an `Other` option; the GUI provides free-text input.
 
 Run exactly one standalone command in this form, with no pipes, chaining, substitutions, environment prefixes, or additional redirects:
@@ -18,6 +20,12 @@ Run exactly one standalone command in this form, with no pipes, chaining, substi
 ```bash
 auq ask <<'AUQ_JSON'
 {
+  "origin": {
+    "agent": "codex"
+  },
+  "context": {
+    "summary": "Choose how this project should persist local data."
+  },
   "questions": [
     {
       "question": "Which persistence strategy should this use?",

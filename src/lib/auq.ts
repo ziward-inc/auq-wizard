@@ -17,6 +17,19 @@ export type AskPayload = {
   questions: Question[]
 }
 
+export type RequestOrigin = {
+  agent: string
+  cwd?: string
+  projectRoot?: string
+  projectName?: string
+  branch?: string
+  sessionId?: string
+}
+
+export type RequestContext = {
+  summary: string
+}
+
 export type AnswerValue = string | string[]
 
 export type AnswerPayload = {
@@ -31,6 +44,8 @@ export type StoredRequest = {
   sequence: number
   status: RequestStatus
   payload: AskPayload
+  origin?: RequestOrigin
+  context?: RequestContext
   result?: AnswerPayload
   createdAt: number
   updatedAt: number

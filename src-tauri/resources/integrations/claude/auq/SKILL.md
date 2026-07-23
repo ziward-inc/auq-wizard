@@ -14,6 +14,12 @@ When the built-in tool is unavailable in the current agent or mode, fall back to
 ```bash
 auq ask <<'AUQ_JSON'
 {
+  "origin": {
+    "agent": "claude"
+  },
+  "context": {
+    "summary": "Choose the implementation approach for the current task."
+  },
   "questions": [
     {
       "question": "Which implementation should I use?",
@@ -34,6 +40,8 @@ auq ask <<'AUQ_JSON'
 }
 AUQ_JSON
 ```
+
+For CLI fallback requests, always set `origin.agent` to `claude`. Add a `context.summary` of at most 200 characters that identifies the current task without repeating the question. Do not include secrets, credentials, or the full conversation. AUQ Wizard automatically adds the current project path and Git context.
 
 Use one to five questions, headers of at most 30 characters, and two to five meaningful options. Put the recommendation first. Do not add `Other`; the GUI supplies free-text input. Wait for the command and use its Markdown result as the user's answer. Resume an interrupted request with `auq wait <request-id>`.
 

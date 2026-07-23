@@ -31,11 +31,62 @@ const REQUEST: StoredRequest = {
       },
     ],
   },
-  createdAt: 1,
+  origin: {
+    agent: "codex",
+    cwd: "/Volumes/t500/Projects/auq-wizard/src-tauri",
+    projectRoot: "/Volumes/t500/Projects/auq-wizard",
+    projectName: "auq-wizard",
+    branch: "main",
+    sessionId: "session-123",
+  },
+  context: {
+    summary: "Make each clarification request identifiable at a glance.",
+  },
+  createdAt: Date.now(),
   updatedAt: 1,
 }
 
 describe("QuestionWizard", () => {
+  it("shows project, agent, task summary, and request details before the question", async () => {
+    render(
+      <QuestionWizard
+        request={REQUEST}
+        pendingCount={1}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    expect(screen.getAllByText("auq-wizard")).toHaveLength(3)
+    expect(screen.getAllByText("Codex")).toHaveLength(2)
+    expect(
+      screen.getByText("Make each clarification request identifiable at a glance."),
+    ).toBeVisible()
+    expect(screen.queryByText(REQUEST.requestId)).not.toBeVisible()
+
+    await userEvent.click(screen.getByText("Details"))
+
+    expect(screen.getByText("/Volumes/t500/Projects/auq-wizard/src-tauri")).toBeVisible()
+    expect(screen.getByText(REQUEST.requestId)).toBeVisible()
+  })
+
+  it("keeps legacy requests without context usable", () => {
+    render(
+      <QuestionWizard
+        request={{ ...REQUEST, origin: undefined, context: undefined }}
+        pendingCount={1}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    expect(screen.getAllByText("Unknown project")).toHaveLength(3)
+    expect(screen.getAllByText("Unknown source")).toHaveLength(2)
+    expect(
+      screen.getByText("No task summary was provided for this clarification request."),
+    ).toBeVisible()
+  })
+
   it("wraps a 30-character sidebar header without truncating it", () => {
     const header = "123456789012345678901234567890"
     const request = {

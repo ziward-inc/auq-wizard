@@ -4,7 +4,10 @@ use anyhow::{bail, Context, Result};
 use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
 
-use crate::protocol::{AnswerPayload, AskPayload, QueueSummary, RequestStatus, StoredRequest};
+use crate::protocol::{
+    AnswerPayload, AskPayload, QueueSummary, RequestContext, RequestOrigin, RequestStatus,
+    StoredRequest,
+};
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -36,26 +39,50 @@ impl Database {
             );
             CREATE INDEX IF NOT EXISTS requests_status_sequence
               ON requests(status, sequence);
-            PRAGMA user_version = 1;
             ",
         )?;
+        let version =
+            connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?;
+        if version < 2 {
+            connection.execute_batch(
+                "
+                ALTER TABLE requests ADD COLUMN origin_json TEXT;
+                ALTER TABLE requests ADD COLUMN context_json TEXT;
+                PRAGMA user_version = 2;
+                ",
+            )?;
+        }
         Ok(Self {
             connection: Mutex::new(connection),
         })
     }
 
-    pub fn insert_or_get(&self, request_id: &str, payload: &AskPayload) -> Result<StoredRequest> {
+    pub fn insert_or_get(
+        &self,
+        request_id: &str,
+        payload: &AskPayload,
+        origin: Option<&RequestOrigin>,
+        context: Option<&RequestContext>,
+    ) -> Result<StoredRequest> {
         payload.validate()?;
+        if let Some(origin) = origin {
+            origin.validate()?;
+        }
+        if let Some(context) = context {
+            context.validate()?;
+        }
         let payload_json = serde_json::to_string(payload)?;
         let payload_hash = payload.hash()?;
+        let origin_json = origin.map(serde_json::to_string).transpose()?;
+        let context_json = context.map(serde_json::to_string).transpose()?;
         let now = Utc::now().timestamp_millis();
         let mut connection = self.connection.lock().expect("database mutex poisoned");
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
         let existing = transaction
             .query_row(
-                "SELECT sequence, request_id, payload_json, payload_hash, status, result_json,
-                        created_at, updated_at, completed_at
+                "SELECT sequence, request_id, payload_json, payload_hash, origin_json, context_json,
+                        status, result_json, created_at, updated_at, completed_at
                    FROM requests WHERE request_id = ?1",
                 [request_id],
                 row_to_request_with_hash,
@@ -71,13 +98,21 @@ impl Database {
 
         transaction.execute(
             "INSERT INTO requests
-              (request_id, payload_json, payload_hash, status, created_at, updated_at)
-              VALUES (?1, ?2, ?3, 'pending', ?4, ?4)",
-            params![request_id, payload_json, payload_hash, now],
+              (request_id, payload_json, payload_hash, origin_json, context_json, status,
+               created_at, updated_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?6)",
+            params![
+                request_id,
+                payload_json,
+                payload_hash,
+                origin_json,
+                context_json,
+                now
+            ],
         )?;
         let request = transaction.query_row(
-            "SELECT sequence, request_id, payload_json, status, result_json,
-                    created_at, updated_at, completed_at
+            "SELECT sequence, request_id, payload_json, origin_json, context_json, status,
+                    result_json, created_at, updated_at, completed_at
                FROM requests WHERE request_id = ?1",
             [request_id],
             row_to_request,
@@ -90,8 +125,8 @@ impl Database {
         let connection = self.connection.lock().expect("database mutex poisoned");
         connection
             .query_row(
-                "SELECT sequence, request_id, payload_json, status, result_json,
-                        created_at, updated_at, completed_at
+                "SELECT sequence, request_id, payload_json, origin_json, context_json, status,
+                        result_json, created_at, updated_at, completed_at
                    FROM requests WHERE request_id = ?1",
                 [request_id],
                 row_to_request,
@@ -104,8 +139,8 @@ impl Database {
         let connection = self.connection.lock().expect("database mutex poisoned");
         connection
             .query_row(
-                "SELECT sequence, request_id, payload_json, status, result_json,
-                        created_at, updated_at, completed_at
+                "SELECT sequence, request_id, payload_json, origin_json, context_json, status,
+                        result_json, created_at, updated_at, completed_at
                    FROM requests WHERE status = 'pending' ORDER BY sequence LIMIT 1",
                 [],
                 row_to_request,
@@ -189,39 +224,55 @@ impl Database {
 
 fn row_to_request(row: &Row<'_>) -> rusqlite::Result<StoredRequest> {
     let payload_json: String = row.get(2)?;
-    let status: String = row.get(3)?;
-    let result_json: Option<String> = row.get(4)?;
+    let origin_json: Option<String> = row.get(3)?;
+    let context_json: Option<String> = row.get(4)?;
+    let status: String = row.get(5)?;
+    let result_json: Option<String> = row.get(6)?;
     Ok(StoredRequest {
         sequence: row.get(0)?,
         request_id: row.get(1)?,
         payload: serde_json::from_str(&payload_json).map_err(json_error)?,
+        origin: origin_json
+            .map(|value| serde_json::from_str(&value).map_err(json_error))
+            .transpose()?,
+        context: context_json
+            .map(|value| serde_json::from_str(&value).map_err(json_error))
+            .transpose()?,
         status: RequestStatus::parse(&status).map_err(other_error)?,
         result: result_json
             .map(|value| serde_json::from_str(&value).map_err(json_error))
             .transpose()?,
-        created_at: row.get(5)?,
-        updated_at: row.get(6)?,
-        completed_at: row.get(7)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+        completed_at: row.get(9)?,
     })
 }
 
 fn row_to_request_with_hash(row: &Row<'_>) -> rusqlite::Result<(StoredRequest, String)> {
     let payload_json: String = row.get(2)?;
     let payload_hash: String = row.get(3)?;
-    let status: String = row.get(4)?;
-    let result_json: Option<String> = row.get(5)?;
+    let origin_json: Option<String> = row.get(4)?;
+    let context_json: Option<String> = row.get(5)?;
+    let status: String = row.get(6)?;
+    let result_json: Option<String> = row.get(7)?;
     Ok((
         StoredRequest {
             sequence: row.get(0)?,
             request_id: row.get(1)?,
             payload: serde_json::from_str(&payload_json).map_err(json_error)?,
+            origin: origin_json
+                .map(|value| serde_json::from_str(&value).map_err(json_error))
+                .transpose()?,
+            context: context_json
+                .map(|value| serde_json::from_str(&value).map_err(json_error))
+                .transpose()?,
             status: RequestStatus::parse(&status).map_err(other_error)?,
             result: result_json
                 .map(|value| serde_json::from_str(&value).map_err(json_error))
                 .transpose()?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
-            completed_at: row.get(8)?,
+            created_at: row.get(8)?,
+            updated_at: row.get(9)?,
+            completed_at: row.get(10)?,
         },
         payload_hash,
     ))
@@ -272,11 +323,29 @@ mod tests {
     fn persists_fifo_and_idempotency() {
         let directory = std::env::temp_dir().join(format!("auq-db-{}", uuid::Uuid::now_v7()));
         let database = Database::open(&directory.join("queue.sqlite3")).unwrap();
-        database.insert_or_get("one", &payload("First?")).unwrap();
-        database.insert_or_get("two", &payload("Second?")).unwrap();
+        let origin = RequestOrigin {
+            agent: "codex".into(),
+            cwd: Some("/Projects/auq-wizard".into()),
+            project_root: Some("/Projects/auq-wizard".into()),
+            project_name: Some("auq-wizard".into()),
+            branch: Some("main".into()),
+            session_id: None,
+        };
+        let context = RequestContext {
+            summary: "Choose the first option.".into(),
+        };
+        database
+            .insert_or_get("one", &payload("First?"), Some(&origin), Some(&context))
+            .unwrap();
+        database
+            .insert_or_get("two", &payload("Second?"), None, None)
+            .unwrap();
         assert_eq!(database.active().unwrap().unwrap().request_id, "one");
+        let first = database.get("one").unwrap().unwrap();
+        assert_eq!(first.origin, Some(origin));
+        assert_eq!(first.context, Some(context));
         assert!(database
-            .insert_or_get("one", &payload("Different?"))
+            .insert_or_get("one", &payload("Different?"), None, None)
             .unwrap_err()
             .to_string()
             .contains("different payload"));
@@ -294,6 +363,52 @@ mod tests {
             )
             .unwrap();
         assert_eq!(database.active().unwrap().unwrap().request_id, "two");
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn migrates_legacy_requests_to_origin_context_columns() {
+        let directory = std::env::temp_dir().join(format!("auq-db-{}", uuid::Uuid::now_v7()));
+        let path = directory.join("queue.sqlite3");
+        fs::create_dir_all(&directory).unwrap();
+        let legacy = Connection::open(&path).unwrap();
+        legacy
+            .execute_batch(
+                "
+                CREATE TABLE requests (
+                  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                  request_id TEXT NOT NULL UNIQUE,
+                  payload_json TEXT NOT NULL,
+                  payload_hash TEXT NOT NULL,
+                  status TEXT NOT NULL CHECK(status IN ('pending', 'answered', 'canceled')),
+                  result_json TEXT,
+                  created_at INTEGER NOT NULL,
+                  updated_at INTEGER NOT NULL,
+                  completed_at INTEGER
+                );
+                CREATE INDEX requests_status_sequence ON requests(status, sequence);
+                PRAGMA user_version = 1;
+                ",
+            )
+            .unwrap();
+        drop(legacy);
+
+        let database = Database::open(&path).unwrap();
+        let origin = RequestOrigin {
+            agent: "codex".into(),
+            cwd: None,
+            project_root: None,
+            project_name: Some("auq-wizard".into()),
+            branch: None,
+            session_id: None,
+        };
+        database
+            .insert_or_get("migrated", &payload("Choose?"), Some(&origin), None)
+            .unwrap();
+        assert_eq!(
+            database.get("migrated").unwrap().unwrap().origin,
+            Some(origin)
+        );
         let _ = fs::remove_dir_all(directory);
     }
 }

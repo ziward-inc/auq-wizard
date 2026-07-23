@@ -43,6 +43,28 @@ pub struct AskPayload {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestOrigin {
+    pub agent: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestContext {
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum AnswerValue {
     Single(String),
@@ -93,6 +115,10 @@ pub struct StoredRequest {
     pub status: RequestStatus,
     pub payload: AskPayload,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<RequestOrigin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<RequestContext>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<AnswerPayload>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -114,6 +140,10 @@ pub enum ClientMessage {
         version: u16,
         request_id: String,
         payload: AskPayload,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin: Option<RequestOrigin>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<RequestContext>,
     },
     Wait {
         version: u16,
@@ -266,6 +296,24 @@ impl AskPayload {
     }
 }
 
+impl RequestOrigin {
+    pub fn validate(&self) -> Result<()> {
+        if self.agent.trim().is_empty() || self.agent.chars().count() > 30 {
+            bail!("origin agent must contain between 1 and 30 characters");
+        }
+        Ok(())
+    }
+}
+
+impl RequestContext {
+    pub fn validate(&self) -> Result<()> {
+        if self.summary.trim().is_empty() || self.summary.chars().count() > 200 {
+            bail!("context summary must contain between 1 and 200 characters");
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,6 +363,41 @@ mod tests {
     #[test]
     fn validates_a_normal_payload() {
         payload().validate().unwrap();
+    }
+
+    #[test]
+    fn validates_request_origin_and_context() {
+        RequestOrigin {
+            agent: "codex".into(),
+            cwd: None,
+            project_root: None,
+            project_name: Some("auq-wizard".into()),
+            branch: None,
+            session_id: None,
+        }
+        .validate()
+        .unwrap();
+        RequestContext {
+            summary: "Show the request source before each question.".into(),
+        }
+        .validate()
+        .unwrap();
+
+        assert!(RequestOrigin {
+            agent: String::new(),
+            cwd: None,
+            project_root: None,
+            project_name: None,
+            branch: None,
+            session_id: None,
+        }
+        .validate()
+        .is_err());
+        assert!(RequestContext {
+            summary: "x".repeat(201),
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]
@@ -382,6 +465,8 @@ mod tests {
                 sequence: 1,
                 status: RequestStatus::Answered,
                 payload: max_payload,
+                origin: None,
+                context: None,
                 result: Some(max_answer),
                 created_at: 1,
                 updated_at: 1,

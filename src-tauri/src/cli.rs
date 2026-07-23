@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::{self, Read},
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
     time::Duration,
 };
@@ -9,6 +9,7 @@ use std::{
 use anyhow::{bail, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use futures_util::{SinkExt, StreamExt};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::net::UnixStream;
 use tokio_util::codec::{Framed, LinesCodec};
@@ -17,8 +18,9 @@ use uuid::Uuid;
 use crate::{
     broker::{socket_path, BUNDLE_IDENTIFIER},
     protocol::{
-        encode_frame, AnswerPayload, AnswerValue, AskPayload, ClientMessage, RequestStatus,
-        ServerMessage, StoredRequest, MAX_ASK_PAYLOAD_BYTES, MAX_FRAME_BYTES, PROTOCOL_VERSION,
+        encode_frame, AnswerPayload, AnswerValue, AskPayload, ClientMessage, RequestContext,
+        RequestOrigin, RequestStatus, ServerMessage, StoredRequest, MAX_ASK_PAYLOAD_BYTES,
+        MAX_FRAME_BYTES, PROTOCOL_VERSION,
     },
 };
 
@@ -67,6 +69,17 @@ struct TerminalResult {
     request_id: String,
     status: RequestStatus,
     result: Option<AnswerPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AskInput {
+    #[serde(flatten)]
+    payload: AskPayload,
+    #[serde(default)]
+    origin: Option<RequestOrigin>,
+    #[serde(default)]
+    context: Option<RequestContext>,
 }
 
 pub fn is_cli_invocation() -> bool {
@@ -127,10 +140,17 @@ async fn run_async() -> Result<i32> {
     match command {
         Commands::Ask { request_id } => {
             ensure_auq_enabled()?;
-            let payload: AskPayload = read_stdin_json()?;
-            payload.validate()?;
+            let input: AskInput = read_stdin_json()?;
+            input.payload.validate()?;
+            if let Some(context) = &input.context {
+                context.validate()?;
+            }
+            let origin = local_origin(input.origin);
+            origin.validate()?;
             let request_id = request_id.unwrap_or_else(|| Uuid::now_v7().to_string());
-            let terminal = submit_and_wait(request_id, payload, true).await?;
+            let terminal =
+                submit_and_wait(request_id, input.payload, Some(origin), input.context, true)
+                    .await?;
             print_terminal_result(&terminal);
             Ok(exit_code(terminal.status))
         }
@@ -209,6 +229,8 @@ async fn run_async() -> Result<i32> {
 async fn submit_and_wait(
     request_id: String,
     payload: AskPayload,
+    origin: Option<RequestOrigin>,
+    context: Option<RequestContext>,
     announce: bool,
 ) -> Result<TerminalResult> {
     wait_loop(
@@ -217,6 +239,8 @@ async fn submit_and_wait(
             version: PROTOCOL_VERSION,
             request_id,
             payload,
+            origin,
+            context,
         },
         announce,
     )
@@ -350,6 +374,7 @@ async fn run_claude_hook() -> Result<i32> {
         return Ok(0);
     }
     let hook_input: Value = read_stdin_json()?;
+    let origin = hook_origin(&hook_input);
     let original_input = hook_input
         .get("tool_input")
         .cloned()
@@ -362,7 +387,7 @@ async fn run_claude_hook() -> Result<i32> {
         .map(|question| question.question.clone())
         .collect::<Vec<_>>();
     let request_id = Uuid::now_v7().to_string();
-    let terminal = submit_and_wait(request_id, payload, false).await?;
+    let terminal = submit_and_wait(request_id, payload, Some(origin), None, false).await?;
 
     match terminal.status {
         RequestStatus::Answered => {
@@ -482,7 +507,7 @@ fn ensure_auq_enabled() -> Result<()> {
     Ok(())
 }
 
-fn parse_canonical_ask(command: &str) -> Result<AskPayload> {
+fn parse_canonical_ask(command: &str) -> Result<AskInput> {
     let lines: Vec<&str> = command.lines().collect();
     if lines.len() < 3 || lines[0] != "auq ask <<'AUQ_JSON'" || lines.last() != Some(&"AUQ_JSON") {
         bail!("not a canonical AUQ command");
@@ -491,9 +516,76 @@ fn parse_canonical_ask(command: &str) -> Result<AskPayload> {
     if json.len() > MAX_ASK_PAYLOAD_BYTES {
         bail!("AUQ payload exceeds 1 MB");
     }
-    let payload: AskPayload = serde_json::from_str(&json)?;
-    payload.validate()?;
-    Ok(payload)
+    let input: AskInput = serde_json::from_str(&json)?;
+    input.payload.validate()?;
+    if let Some(origin) = &input.origin {
+        origin.validate()?;
+    }
+    if let Some(context) = &input.context {
+        context.validate()?;
+    }
+    Ok(input)
+}
+
+fn local_origin(requested: Option<RequestOrigin>) -> RequestOrigin {
+    let agent = requested
+        .as_ref()
+        .map(|origin| origin.agent.trim())
+        .filter(|agent| !agent.is_empty())
+        .unwrap_or("cli")
+        .to_string();
+    let session_id = requested.and_then(|origin| origin.session_id);
+    build_origin(agent, std::env::current_dir().ok(), session_id)
+}
+
+fn hook_origin(hook_input: &Value) -> RequestOrigin {
+    let cwd = hook_input
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(PathBuf::from);
+    let session_id = hook_input
+        .get("session_id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    build_origin("claude".into(), cwd, session_id)
+}
+
+fn build_origin(agent: String, cwd: Option<PathBuf>, session_id: Option<String>) -> RequestOrigin {
+    let project_root = cwd
+        .as_deref()
+        .and_then(|path| git_output(path, &["rev-parse", "--show-toplevel"]))
+        .map(PathBuf::from)
+        .or_else(|| cwd.clone());
+    let project_name = project_root
+        .as_deref()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned());
+    let branch = cwd
+        .as_deref()
+        .and_then(|path| git_output(path, &["branch", "--show-current"]))
+        .filter(|value| !value.is_empty());
+
+    RequestOrigin {
+        agent,
+        cwd: cwd.map(|path| path.to_string_lossy().into_owned()),
+        project_root: project_root.map(|path| path.to_string_lossy().into_owned()),
+        project_name,
+        branch,
+        session_id,
+    }
+}
+
+fn git_output(cwd: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 fn exit_code(status: RequestStatus) -> i32 {
@@ -556,6 +648,8 @@ mod tests {
     fn accepts_only_the_canonical_heredoc() {
         let body = r#"{"questions":[{"question":"Choose?","header":"Choice","options":[{"label":"A","description":"First"},{"label":"B","description":"Second"}],"multiSelect":false}]}"#;
         parse_canonical_ask(&canonical(body)).unwrap();
+        let contextual_body = r#"{"origin":{"agent":"codex"},"context":{"summary":"Choose storage for the current task."},"questions":[{"question":"Choose?","header":"Choice","options":[{"label":"A","description":"First"},{"label":"B","description":"Second"}],"multiSelect":false}]}"#;
+        parse_canonical_ask(&canonical(contextual_body)).unwrap();
         assert!(parse_canonical_ask(&format!("{} && whoami", canonical(body))).is_err());
         assert!(parse_canonical_ask(&format!("rtk {}", canonical(body))).is_err());
         assert!(parse_canonical_ask(&canonical("$(whoami)")).is_err());
