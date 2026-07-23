@@ -35,6 +35,6 @@ auq ask <<'AUQ_JSON'
 AUQ_JSON
 ```
 
-Use one to four questions, headers of at most 12 characters, and two to four meaningful options. Put the recommendation first. Do not add `Other`; the GUI supplies free-text input. Wait for the command and use its Markdown result as the user's answer. Resume an interrupted request with `auq wait <request-id>`.
+Use one to five questions, headers of at most 30 characters, and two to five meaningful options. Put the recommendation first. Do not add `Other`; the GUI supplies free-text input. Wait for the command and use its Markdown result as the user's answer. Resume an interrupted request with `auq wait <request-id>`.
 
 If `auq` is unavailable, GUI routing is disabled, or the CLI says to use native interaction, ask through the current session's native user-input channel instead. If no structured input tool is available, ask directly in the conversation. Do not retry a disabled or unavailable CLI in a loop.

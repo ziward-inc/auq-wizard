@@ -11,7 +11,7 @@ Resolve discoverable facts yourself before asking. Do not ask for confirmation w
 
 Use an AUQ-specific adapter when the current Codex client exposes one in the active mode. Otherwise, use the AUQ CLI below before falling back to an unstructured question in the conversation. Default mode may not expose the native structured-input adapter; that is not a reason to skip AUQ.
 
-Submit one to four questions. Give each question a header of at most 12 characters and two to four meaningful options. Put the recommended option first and add `(Recommended)` to its label. Do not add an `Other` option; the GUI provides free-text input.
+Submit one to five questions. Give each question a header of at most 30 characters and two to five meaningful options. Put the recommended option first and add `(Recommended)` to its label. Do not add an `Other` option; the GUI provides free-text input.
 
 Run exactly one standalone command in this form, with no pipes, chaining, substitutions, environment prefixes, or additional redirects:
 

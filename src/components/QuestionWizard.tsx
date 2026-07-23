@@ -195,7 +195,9 @@ export function QuestionWizard({ request, pendingCount, onSubmit, onCancel }: Qu
                       >
                         {answered ? <Check className="size-3" /> : index + 1}
                       </span>
-                      <span className="min-w-0 truncate pt-0.5 font-medium">{item.header}</span>
+                      <span className="min-w-0 break-words pt-0.5 font-medium leading-4">
+                        {item.header}
+                      </span>
                     </li>
                   )
                 })}

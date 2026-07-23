@@ -17,8 +17,8 @@ use uuid::Uuid;
 use crate::{
     broker::{socket_path, BUNDLE_IDENTIFIER},
     protocol::{
-        AnswerPayload, AnswerValue, AskPayload, ClientMessage, RequestStatus, ServerMessage,
-        StoredRequest, MAX_PAYLOAD_BYTES, PROTOCOL_VERSION,
+        encode_frame, AnswerPayload, AnswerValue, AskPayload, ClientMessage, RequestStatus,
+        ServerMessage, StoredRequest, MAX_ASK_PAYLOAD_BYTES, MAX_FRAME_BYTES, PROTOCOL_VERSION,
     },
 };
 
@@ -244,8 +244,8 @@ async fn wait_loop(
     let mut reconnects = 0_u8;
     loop {
         let stream = connect_or_launch().await?;
-        let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(MAX_PAYLOAD_BYTES));
-        framed.send(serde_json::to_string(&first_message)?).await?;
+        let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(MAX_FRAME_BYTES));
+        framed.send(encode_frame(&first_message)?).await?;
 
         while let Some(frame) = framed.next().await {
             let message: ServerMessage = serde_json::from_str(&frame?)?;
@@ -292,8 +292,8 @@ async fn wait_loop(
 
 async fn one_shot(message: ClientMessage) -> Result<ServerMessage> {
     let stream = connect_or_launch().await?;
-    let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(MAX_PAYLOAD_BYTES));
-    framed.send(serde_json::to_string(&message)?).await?;
+    let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(MAX_FRAME_BYTES));
+    framed.send(encode_frame(&message)?).await?;
     let response = framed
         .next()
         .await
@@ -336,9 +336,11 @@ fn launch_host() -> Result<()> {
 
 fn read_stdin_json<T: serde::de::DeserializeOwned>() -> Result<T> {
     let mut input = String::new();
-    io::stdin().read_to_string(&mut input)?;
-    if input.len() > MAX_PAYLOAD_BYTES {
-        bail!("input exceeds 256 KB");
+    io::stdin()
+        .take((MAX_FRAME_BYTES + 1) as u64)
+        .read_to_string(&mut input)?;
+    if input.len() > MAX_FRAME_BYTES {
+        bail!("input exceeds 3 MB");
     }
     serde_json::from_str(&input).context("stdin is not valid AUQ JSON")
 }
@@ -486,8 +488,8 @@ fn parse_canonical_ask(command: &str) -> Result<AskPayload> {
         bail!("not a canonical AUQ command");
     }
     let json = lines[1..lines.len() - 1].join("\n");
-    if json.len() > MAX_PAYLOAD_BYTES {
-        bail!("AUQ payload exceeds 256 KB");
+    if json.len() > MAX_ASK_PAYLOAD_BYTES {
+        bail!("AUQ payload exceeds 1 MB");
     }
     let payload: AskPayload = serde_json::from_str(&json)?;
     payload.validate()?;

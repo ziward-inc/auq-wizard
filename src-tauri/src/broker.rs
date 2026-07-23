@@ -18,8 +18,8 @@ use tokio_util::codec::{Framed, LinesCodec};
 use crate::{
     database::Database,
     protocol::{
-        AnswerPayload, ClientMessage, QueueSummary, RequestStatus, ServerMessage, StoredRequest,
-        MAX_PAYLOAD_BYTES, PROTOCOL_VERSION,
+        encode_frame, AnswerPayload, ClientMessage, QueueSummary, RequestStatus, ServerMessage,
+        StoredRequest, MAX_FRAME_BYTES, PROTOCOL_VERSION,
     },
 };
 
@@ -122,7 +122,7 @@ async fn handle_client(
     app: AppHandle,
     broker: Arc<Broker>,
 ) -> Result<()> {
-    let codec = LinesCodec::new_with_max_length(MAX_PAYLOAD_BYTES);
+    let codec = LinesCodec::new_with_max_length(MAX_FRAME_BYTES);
     let mut framed = Framed::new(stream, codec);
     let line = framed
         .next()
@@ -263,7 +263,7 @@ async fn send(
     framed: &mut Framed<tokio::net::UnixStream, LinesCodec>,
     message: &ServerMessage,
 ) -> Result<()> {
-    framed.send(serde_json::to_string(message)?).await?;
+    framed.send(encode_frame(message)?).await?;
     Ok(())
 }
 

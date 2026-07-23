@@ -36,6 +36,28 @@ const REQUEST: StoredRequest = {
 }
 
 describe("QuestionWizard", () => {
+  it("wraps a 30-character sidebar header without truncating it", () => {
+    const header = "123456789012345678901234567890"
+    const request = {
+      ...REQUEST,
+      payload: {
+        questions: [{ ...REQUEST.payload.questions[0], header }, REQUEST.payload.questions[1]],
+      },
+    }
+
+    render(
+      <QuestionWizard
+        request={request}
+        pendingCount={1}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    expect(screen.getByText(header)).toHaveClass("break-words")
+    expect(screen.getByText(header)).not.toHaveClass("truncate")
+  })
+
   it("collects single and multi-select answers", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     render(
