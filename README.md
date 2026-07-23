@@ -15,6 +15,20 @@ AUQ Wizard is a macOS menu bar app and blocking CLI proxy for structured agent q
 
 The socket lives at `/tmp/auq-wizard-<uid>/auq.sock` with mode `0600`. Requests remain in the app data SQLite database so a disconnected CLI can resume with its printed request ID.
 
+## Install
+
+Install the latest Apple Silicon macOS release with either command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ziward-inc/auq-wizard/main/install.sh | sh
+```
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ziward-inc/auq-wizard/main/install.sh | sh
+```
+
+The installer verifies the release checksum, installs the app to `~/Applications/auq-wizard.app`, and opens its setup screen. Select **Install integrations** once to add the `auq` CLI, Claude Code and Codex skills, hooks, and login launch.
+
 ## Build
 
 Requirements: macOS, Rust, Node.js, and pnpm.
