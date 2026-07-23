@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { z } from "zod"
 
+import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldLabel, FieldTitle } from "@/components/ui/field"
@@ -122,9 +123,12 @@ export function QuestionWizard({ request, pendingCount, onSubmit, onCancel }: Qu
               Request <code>{request.requestId.slice(0, 8)}</code>
             </p>
           </div>
-          <span className="border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-            {pendingCount} pending
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+              {pendingCount} pending
+            </span>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

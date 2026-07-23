@@ -1,6 +1,7 @@
 import { Check, CircleAlert, Command, Download, Power, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 
+import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import type { InstallOptions, IntegrationStatus } from "@/lib/auq"
 
@@ -61,9 +62,12 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-8 py-12">
-      <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-        Agent question bridge
-      </p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+          Agent question bridge
+        </p>
+        <ThemeToggle />
+      </div>
       <h1 className="mt-4 text-balance text-4xl font-semibold tracking-tight">
         Ask once. Answer in one place.
       </h1>
@@ -97,7 +101,8 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
         <div className="mt-4 flex items-center gap-3 border border-amber-400/50 bg-amber-50 p-4 text-sm text-amber-950">
           <CircleAlert className="size-4 shrink-0" />
           <p className="min-w-0 flex-1">
-            An existing <code>auq</code> command will be backed up and replaced. Continue?
+            An existing <code className="bg-amber-950 text-amber-50">auq</code> command will be
+            backed up and replaced. Continue?
           </p>
           <Button
             type="button"

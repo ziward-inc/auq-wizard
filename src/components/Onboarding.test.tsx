@@ -50,6 +50,7 @@ describe("Onboarding", () => {
 
     expect(onInstall).not.toHaveBeenCalled()
     expect(screen.getByText(/will be backed up and replaced/i)).toBeInTheDocument()
+    expect(screen.getByText("auq")).toHaveClass("bg-amber-950", "text-amber-50")
 
     await userEvent.click(screen.getByRole("button", { name: "Replace and install" }))
 
