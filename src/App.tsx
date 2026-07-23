@@ -1,0 +1,101 @@
+import { listen } from "@tauri-apps/api/event"
+import { getCurrentWindow } from "@tauri-apps/api/window"
+import { useCallback, useEffect, useState } from "react"
+
+import { Onboarding } from "@/components/Onboarding"
+import { QuestionWizard } from "@/components/QuestionWizard"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import {
+  type AnswerPayload,
+  auqApi,
+  type InstallOptions,
+  type IntegrationStatus,
+  type QueueSummary,
+  type StoredRequest,
+} from "@/lib/auq"
+
+const EMPTY_SUMMARY: QueueSummary = { pending: 0 }
+
+export default function App() {
+  const [request, setRequest] = useState<StoredRequest | null>(null)
+  const [summary, setSummary] = useState<QueueSummary>(EMPTY_SUMMARY)
+  const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const [active, queue, integrations] = await Promise.all([
+        auqApi.active(),
+        auqApi.summary(),
+        auqApi.integrationStatus(),
+      ])
+      setRequest(active)
+      setSummary(queue)
+      setIntegrationStatus(integrations)
+      setError(null)
+    } catch (refreshError) {
+      setError(String(refreshError))
+    }
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    const unlistenPromise = listen<QueueSummary>("queue-changed", () => refresh())
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") getCurrentWindow().hide()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => {
+      window.removeEventListener("keydown", onKeyDown)
+      unlistenPromise.then((unlisten) => unlisten())
+    }
+  }, [refresh])
+
+  const answer = async (result: AnswerPayload) => {
+    if (!request) return
+    await auqApi.answer(request.requestId, result)
+    await refresh()
+  }
+
+  const cancel = async () => {
+    if (!request) return
+    await auqApi.cancel(request.requestId)
+    await refresh()
+  }
+
+  const install = async (options: InstallOptions) => {
+    const status = await auqApi.install(options)
+    setIntegrationStatus(status)
+  }
+
+  const setEnabled = async (enabled: boolean) => {
+    await auqApi.setEnabled(enabled)
+    await refresh()
+  }
+
+  return (
+    <TooltipProvider>
+      <div className="flex min-h-screen flex-col bg-background text-foreground">
+        {error ? (
+          <div
+            role="alert"
+            className="border-b border-destructive/40 bg-destructive/5 px-6 py-3 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
+        {request ? (
+          <QuestionWizard
+            key={request.requestId}
+            request={request}
+            pendingCount={summary.pending}
+            onSubmit={answer}
+            onCancel={cancel}
+          />
+        ) : (
+          <Onboarding status={integrationStatus} onInstall={install} onSetEnabled={setEnabled} />
+        )}
+      </div>
+    </TooltipProvider>
+  )
+}
