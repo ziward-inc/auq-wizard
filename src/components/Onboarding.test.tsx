@@ -19,6 +19,30 @@ const STATUS: IntegrationStatus = {
 }
 
 describe("Onboarding", () => {
+  it("keeps the reinstall action available when every integration is ready", async () => {
+    const onInstall = vi.fn().mockResolvedValue(undefined)
+    render(
+      <Onboarding
+        status={STATUS}
+        onInstall={onInstall}
+        onSetEnabled={vi.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    const reinstallButton = screen.getByRole("button", { name: "Reinstall integrations" })
+    expect(reinstallButton).toBeEnabled()
+
+    await userEvent.click(reinstallButton)
+
+    expect(onInstall).toHaveBeenCalledWith({
+      cli: true,
+      claude: true,
+      codex: true,
+      autostart: true,
+      replaceCli: false,
+    })
+  })
+
   it("places the install action before integration settings", () => {
     render(
       <Onboarding

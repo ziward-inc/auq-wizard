@@ -95,7 +95,7 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
           <Button
             type="button"
             size="lg"
-            disabled={installing || allInstalled}
+            disabled={installing}
             onClick={() => {
               if (status?.cliConflict) {
                 setConfirmingReplace(true)
@@ -105,7 +105,13 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
               void runInstall(false)
             }}
           >
-            {allInstalled ? "Ready" : installing ? "Installing…" : "Install integrations"}
+            {installing
+              ? allInstalled
+                ? "Reinstalling…"
+                : "Installing…"
+              : allInstalled
+                ? "Reinstall integrations"
+                : "Install integrations"}
           </Button>
         </section>
 
