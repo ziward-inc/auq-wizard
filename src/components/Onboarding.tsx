@@ -45,7 +45,8 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
   const [confirmingReplace, setConfirmingReplace] = useState(false)
   const [changingRouting, setChangingRouting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const allInstalled = ITEMS.every((item) => installed(status, item.key))
+  const installedCount = ITEMS.filter((item) => installed(status, item.key)).length
+  const allInstalled = installedCount === ITEMS.length
 
   const runInstall = async (replaceCli: boolean) => {
     setInstalling(true)
@@ -61,143 +62,210 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-8 py-12">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-          Agent question bridge
-        </p>
-        <ThemeToggle />
-      </div>
-      <h1 className="mt-4 text-balance text-4xl font-semibold tracking-tight">
-        Ask once. Answer in one place.
-      </h1>
-      <p className="mt-4 max-w-2xl text-pretty text-base leading-7 text-muted-foreground">
-        AUQ Wizard connects agent clarification requests to a focused desktop wizard. It stays in
-        the menu bar and returns your answer to the waiting agent.
-      </p>
+    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <header className="flex h-14 shrink-0 items-center border-b bg-card/85 px-5 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-7 place-items-center rounded-md bg-primary font-mono text-[11px] font-bold text-primary-foreground shadow-xs">
+              A/
+            </span>
+            <div>
+              <p className="text-sm font-semibold tracking-tight">AUQ Wizard</p>
+              <p className="text-[11px] text-muted-foreground">Agent question bridge</p>
+            </div>
+          </div>
+          <ThemeToggle />
+        </div>
+      </header>
 
-      <div className="mt-7 flex items-center justify-between gap-4">
-        <p className="text-xs leading-5 text-muted-foreground">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-6 py-7">
+        <section className="grid items-end gap-6 border-b pb-6 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <p className="font-mono text-[11px] font-medium tracking-[0.12em] text-primary uppercase">
+              Setup & integrations
+            </p>
+            <h1 className="mt-2 max-w-2xl text-balance text-3xl font-semibold tracking-[-0.035em]">
+              Answer agent questions without leaving your desktop.
+            </h1>
+            <p className="mt-2.5 max-w-2xl text-sm leading-6 text-muted-foreground">
+              AUQ routes structured clarification requests from your coding agents into one focused
+              desktop workflow.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="lg"
+            disabled={installing || allInstalled}
+            onClick={() => {
+              if (status?.cliConflict) {
+                setConfirmingReplace(true)
+                setError(null)
+                return
+              }
+              void runInstall(false)
+            }}
+          >
+            {allInstalled ? "Ready" : installing ? "Installing…" : "Install integrations"}
+          </Button>
+        </section>
+
+        {confirmingReplace ? (
+          <div className="mt-4 flex items-center gap-3 rounded-lg border border-amber-400/50 bg-amber-50 p-3.5 text-sm text-amber-950 shadow-xs dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+            <CircleAlert className="size-4 shrink-0" />
+            <p className="min-w-0 flex-1">
+              An existing <code className="bg-amber-950 text-amber-50">auq</code> command will be
+              backed up and replaced. Continue?
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={installing}
+              onClick={() => setConfirmingReplace(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={installing}
+              onClick={() => void runInstall(true)}
+            >
+              {installing ? "Replacing…" : "Replace and install"}
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="mt-5 grid items-start gap-4 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <section className="rounded-lg border bg-card p-4 shadow-xs">
+            <div className="flex items-start gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-md border bg-background text-muted-foreground">
+                <Power className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold">
+                    GUI routing {status?.auqEnabled === false ? "paused" : "enabled"}
+                  </h2>
+                  <span className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        status?.auqEnabled === false ? "bg-amber-500" : "bg-emerald-500"
+                      }`}
+                    />
+                    {status?.auqEnabled === false ? "Paused" : "Active"}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                  {status?.auqEnabled === false
+                    ? "Agents use their native interaction instead of opening this app."
+                    : "New clarification requests open here automatically."}
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-4 w-full"
+              disabled={!status || changingRouting}
+              onClick={async () => {
+                if (!status) return
+                setChangingRouting(true)
+                setError(null)
+                try {
+                  await onSetEnabled(!status.auqEnabled)
+                } catch (routingError) {
+                  setError(String(routingError))
+                } finally {
+                  setChangingRouting(false)
+                }
+              }}
+            >
+              {changingRouting
+                ? "Updating…"
+                : status?.auqEnabled === false
+                  ? "Enable AUQ"
+                  : "Pause AUQ"}
+            </Button>
+            <p className="mt-3 border-t pt-3 text-[11px] leading-4 text-muted-foreground">
+              Pause routing before working from mobile or a remote session.
+            </p>
+          </section>
+
+          <section className="overflow-hidden rounded-lg border bg-card shadow-xs">
+            <div className="flex items-center justify-between gap-4 border-b px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold">Integrations</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  CLI, agents, and background launch
+                </p>
+              </div>
+              <span className="rounded-full border bg-background px-2.5 py-1 font-mono text-[11px] text-muted-foreground tabular-nums">
+                {installedCount}/{ITEMS.length} ready
+              </span>
+            </div>
+
+            <div className="divide-y">
+              {ITEMS.map((item) => {
+                const Icon = item.icon
+                const done = installed(status, item.key)
+                return (
+                  <div key={item.key} className="flex items-center gap-3 px-4 py-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                      <Icon className="size-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium">{item.label}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {item.description}
+                      </p>
+                    </div>
+                    <span
+                      className={
+                        done
+                          ? "flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                          : "text-xs text-muted-foreground"
+                      }
+                    >
+                      {done ? (
+                        <>
+                          <Check className="size-3.5" />
+                          Ready
+                        </>
+                      ) : item.key === "cli" && status?.cliConflict ? (
+                        "Needs approval"
+                      ) : (
+                        "Not installed"
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        </div>
+
+        <p className="mt-4 text-xs leading-5 text-muted-foreground">
           Existing settings are merged and backed up. Codex asks you to trust the new hooks in
           <code>/hooks</code>.
         </p>
-        <Button
-          type="button"
-          disabled={installing || allInstalled}
-          onClick={() => {
-            if (status?.cliConflict) {
-              setConfirmingReplace(true)
-              setError(null)
-              return
-            }
-            void runInstall(false)
-          }}
-        >
-          {allInstalled ? "Ready" : installing ? "Installing…" : "Install integrations"}
-        </Button>
-      </div>
 
-      {confirmingReplace ? (
-        <div className="mt-4 flex items-center gap-3 border border-amber-400/50 bg-amber-50 p-4 text-sm text-amber-950">
-          <CircleAlert className="size-4 shrink-0" />
-          <p className="min-w-0 flex-1">
-            An existing <code className="bg-amber-950 text-amber-50">auq</code> command will be
-            backed up and replaced. Continue?
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={installing}
-            onClick={() => setConfirmingReplace(false)}
+        {status?.warnings.map((warning) => (
+          <div
+            key={warning}
+            className="mt-3 flex gap-3 rounded-lg border border-amber-400/50 bg-amber-50 p-3.5 text-sm text-amber-950 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100"
           >
-            Cancel
-          </Button>
-          <Button type="button" disabled={installing} onClick={() => void runInstall(true)}>
-            {installing ? "Replacing…" : "Replace and install"}
-          </Button>
-        </div>
-      ) : null}
-
-      <div className="mt-9 flex items-center gap-4 border bg-card p-4">
-        <span className="grid size-9 place-items-center border bg-background">
-          <Power className="size-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">
-            GUI routing {status?.auqEnabled === false ? "paused" : "enabled"}
+            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            <span>{warning}</span>
+          </div>
+        ))}
+        {error ? (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {error}
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {status?.auqEnabled === false
-              ? "Agents use their native interaction instead of opening this app."
-              : "Pause before working from mobile or a remote session."}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!status || changingRouting}
-          onClick={async () => {
-            if (!status) return
-            setChangingRouting(true)
-            setError(null)
-            try {
-              await onSetEnabled(!status.auqEnabled)
-            } catch (routingError) {
-              setError(String(routingError))
-            } finally {
-              setChangingRouting(false)
-            }
-          }}
-        >
-          {changingRouting
-            ? "Updating…"
-            : status?.auqEnabled === false
-              ? "Enable AUQ"
-              : "Pause AUQ"}
-        </Button>
+        ) : null}
       </div>
-
-      <div className="mt-4 divide-y border bg-card">
-        {ITEMS.map((item) => {
-          const Icon = item.icon
-          const done = installed(status, item.key)
-          return (
-            <div key={item.key} className="flex items-center gap-4 p-4">
-              <span className="grid size-9 place-items-center border bg-background">
-                <Icon className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{item.label}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
-              </div>
-              <span className={done ? "text-foreground" : "text-muted-foreground"}>
-                {done ? (
-                  <Check className="size-4" />
-                ) : item.key === "cli" && status?.cliConflict ? (
-                  "Needs approval"
-                ) : (
-                  "Not installed"
-                )}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-
-      {status?.warnings.map((warning) => (
-        <div
-          key={warning}
-          className="mt-4 flex gap-3 border border-amber-400/50 bg-amber-50 p-4 text-sm text-amber-950"
-        >
-          <CircleAlert className="mt-0.5 size-4 shrink-0" />
-          <span>{warning}</span>
-        </div>
-      ))}
-      {error ? (
-        <p role="alert" className="mt-4 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
     </main>
   )
 }

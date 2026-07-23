@@ -1,13 +1,15 @@
 ---
 name: auq
-description: Ask the user structured clarification questions through the AUQ Wizard desktop app. Use when a Codex task has a material preference or tradeoff that cannot be discovered from the repository or environment and the answer changes the implementation.
+description: Ask the user structured clarification questions through the AUQ Wizard desktop app in both Default and Plan modes. Use whenever a Codex task has a material preference or tradeoff that cannot be discovered from the repository or environment and the answer changes the implementation.
 ---
 
 # AUQ
 
-Resolve discoverable facts yourself before asking. Use AUQ only for consequential user intent, preferences, or mutually exclusive tradeoffs. Do not ask for confirmation when a safe, reversible default is clear.
+This skill applies in both Default and Plan modes. Do not skip AUQ in Default mode merely because Codex can continue with an assumption. When the outcome depends on consequential user intent, preferences, or mutually exclusive tradeoffs that cannot be discovered from the repository or environment, pause and ask before implementation.
 
-Use an AUQ-specific adapter when the current Codex client exposes one. Otherwise, fall back to the AUQ CLI below.
+Resolve discoverable facts yourself before asking. Do not ask for confirmation when a safe, reversible default is clear.
+
+Use an AUQ-specific adapter when the current Codex client exposes one in the active mode. Otherwise, use the AUQ CLI below before falling back to an unstructured question in the conversation. Default mode may not expose the native structured-input adapter; that is not a reason to skip AUQ.
 
 Submit one to four questions. Give each question a header of at most 12 characters and two to four meaningful options. Put the recommended option first and add `(Recommended)` to its label. Do not add an `Other` option; the GUI provides free-text input.
 

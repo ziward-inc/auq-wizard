@@ -75,11 +75,11 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
         {error ? (
           <div
             role="alert"
-            className="border-b border-destructive/40 bg-destructive/5 px-6 py-3 text-sm text-destructive"
+            className="border-b border-destructive/30 bg-destructive/8 px-5 py-2.5 text-sm text-destructive"
           >
             {error}
           </div>

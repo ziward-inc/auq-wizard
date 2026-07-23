@@ -1,4 +1,4 @@
 interface:
   display_name: "AUQ"
-  short_description: "Ask through native input or the AUQ GUI fallback"
-  default_prompt: "Use $auq to ask me a structured clarification with the available native or AUQ GUI path."
+  short_description: "Ask in Default or Plan mode through native input or AUQ"
+  default_prompt: "Use $auq in Default or Plan mode to ask me a structured clarification through the available native or AUQ GUI path."

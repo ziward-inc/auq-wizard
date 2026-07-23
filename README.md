@@ -66,7 +66,7 @@ Use **Pause AUQ** in the app before working from mobile or through a remote sess
 | --- | --- | --- |
 | Claude Code built-in `AskUserQuestion` | The `PreToolUse` hook opens AUQ Wizard and returns the answer through `updatedInput`. | The hook yields and Claude Code presents its native question UI. |
 | Claude Code without the built-in question tool | The installed skill falls back to `auq ask`. | The skill asks through the current native input channel or directly in the conversation. |
-| Codex | An AUQ-specific adapter is preferred when available; otherwise the installed skill uses `auq ask`. | The hook rejects the AUQ command with fallback guidance, and the skill uses native input or asks directly. |
+| Codex in Default or Plan mode | An AUQ-specific adapter is preferred when available; otherwise the installed skill uses `auq ask` rather than inferring a consequential preference. | The hook rejects the AUQ command with fallback guidance, and the skill uses native input or asks directly. |
 
 Pausing affects only new requests. Requests that were already queued remain durable and can still be answered, canceled, or resumed by request ID.
 
