@@ -433,7 +433,6 @@ async fn codex_app_server_request(cwd: &Path, method: &str, params: Value) -> Re
         .flush()
         .await
         .context("failed to flush Codex app-server request")?;
-    drop(stdin);
 
     let mut lines = BufReader::new(stdout).lines();
     let response = tokio::time::timeout(CODEX_RPC_TIMEOUT, async {
@@ -459,6 +458,7 @@ async fn codex_app_server_request(cwd: &Path, method: &str, params: Value) -> Re
     })
     .await;
 
+    drop(stdin);
     let _ = child.kill().await;
     let _ = child.wait().await;
     match response {
@@ -489,7 +489,35 @@ fn find_codex_executable(home: &Path) -> Result<PathBuf> {
         .into_iter()
         .chain(known_candidates)
         .find(|path| path.is_file())
+        .map(|path| native_codex_executable(&path).unwrap_or(path))
         .context("Codex CLI was not found")
+}
+
+fn native_codex_executable(executable: &Path) -> Option<PathBuf> {
+    let (platform_package, target_triple) = match (env::consts::OS, env::consts::ARCH) {
+        ("macos", "aarch64") => ("@openai/codex-darwin-arm64", "aarch64-apple-darwin"),
+        ("macos", "x86_64") => ("@openai/codex-darwin-x64", "x86_64-apple-darwin"),
+        _ => return None,
+    };
+    let wrapper = fs::canonicalize(executable).ok()?;
+    if wrapper.file_name()? != "codex.js" || wrapper.parent()?.file_name()? != "bin" {
+        return None;
+    }
+    let package_root = wrapper.parent()?.parent()?;
+    [
+        package_root
+            .join("node_modules")
+            .join(platform_package)
+            .join("vendor")
+            .join(target_triple)
+            .join("bin/codex"),
+        package_root
+            .join("vendor")
+            .join(target_triple)
+            .join("bin/codex"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
 }
 
 fn install_cli_symlink(destination: &Path, replace_existing: bool) -> Result<()> {
@@ -761,6 +789,35 @@ mod tests {
     #[test]
     fn shell_quote_handles_spaces_and_quotes() {
         assert_eq!(shell_quote("/A B/it's"), "'/A B/it'\\''s'");
+    }
+
+    #[test]
+    fn native_codex_executable_resolves_the_binary_bundled_with_the_npm_wrapper() {
+        let (platform_package, target_triple) = match (env::consts::OS, env::consts::ARCH) {
+            ("macos", "aarch64") => ("@openai/codex-darwin-arm64", "aarch64-apple-darwin"),
+            ("macos", "x86_64") => ("@openai/codex-darwin-x64", "x86_64-apple-darwin"),
+            _ => return,
+        };
+        let root = std::env::temp_dir().join(format!("auq-codex-test-{}", uuid::Uuid::now_v7()));
+        let package_root = root.join("node_modules/@openai/codex");
+        let wrapper = package_root.join("bin/codex.js");
+        let native = package_root
+            .join("node_modules")
+            .join(platform_package)
+            .join("vendor")
+            .join(target_triple)
+            .join("bin/codex");
+        fs::create_dir_all(wrapper.parent().unwrap()).unwrap();
+        fs::create_dir_all(native.parent().unwrap()).unwrap();
+        fs::write(&wrapper, b"#!/usr/bin/env node").unwrap();
+        fs::write(&native, b"codex").unwrap();
+
+        assert_eq!(
+            native_codex_executable(&wrapper),
+            Some(fs::canonicalize(native).unwrap())
+        );
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
