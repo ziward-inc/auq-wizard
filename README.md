@@ -51,7 +51,7 @@ pnpm tauri dev
 
 Open the packaged app and select **Install integrations**. The installer:
 
-- links the same app executable as `~/.local/bin/auq` without replacing an unrelated file;
+- links the same app executable as `~/.local/bin/auq`, replacing an existing command only after explicit approval and creating a timestamped backup;
 - installs managed AUQ skills for Claude Code and Codex;
 - merges hook entries into existing settings and creates timestamped backups;
 - enables login launch through the Tauri autostart plugin.

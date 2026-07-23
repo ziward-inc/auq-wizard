@@ -41,9 +41,23 @@ function installed(status: IntegrationStatus | null, key: (typeof ITEMS)[number]
 
 export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps) {
   const [installing, setInstalling] = useState(false)
+  const [confirmingReplace, setConfirmingReplace] = useState(false)
   const [changingRouting, setChangingRouting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const allInstalled = ITEMS.every((item) => installed(status, item.key))
+
+  const runInstall = async (replaceCli: boolean) => {
+    setInstalling(true)
+    setError(null)
+    try {
+      await onInstall({ cli: true, claude: true, codex: true, autostart: true, replaceCli })
+      setConfirmingReplace(false)
+    } catch (installError) {
+      setError(String(installError))
+    } finally {
+      setInstalling(false)
+    }
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-8 py-12">
@@ -57,6 +71,47 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
         AUQ Wizard connects agent clarification requests to a focused desktop wizard. It stays in
         the menu bar and returns your answer to the waiting agent.
       </p>
+
+      <div className="mt-7 flex items-center justify-between gap-4">
+        <p className="text-xs leading-5 text-muted-foreground">
+          Existing settings are merged and backed up. Codex asks you to trust the new hooks in
+          <code>/hooks</code>.
+        </p>
+        <Button
+          type="button"
+          disabled={installing || allInstalled}
+          onClick={() => {
+            if (status?.cliConflict) {
+              setConfirmingReplace(true)
+              setError(null)
+              return
+            }
+            void runInstall(false)
+          }}
+        >
+          {allInstalled ? "Ready" : installing ? "Installing…" : "Install integrations"}
+        </Button>
+      </div>
+
+      {confirmingReplace ? (
+        <div className="mt-4 flex items-center gap-3 border border-amber-400/50 bg-amber-50 p-4 text-sm text-amber-950">
+          <CircleAlert className="size-4 shrink-0" />
+          <p className="min-w-0 flex-1">
+            An existing <code>auq</code> command will be backed up and replaced. Continue?
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={installing}
+            onClick={() => setConfirmingReplace(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="button" disabled={installing} onClick={() => void runInstall(true)}>
+            {installing ? "Replacing…" : "Replace and install"}
+          </Button>
+        </div>
+      ) : null}
 
       <div className="mt-9 flex items-center gap-4 border bg-card p-4">
         <span className="grid size-9 place-items-center border bg-background">
@@ -111,7 +166,13 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
                 <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
               </div>
               <span className={done ? "text-foreground" : "text-muted-foreground"}>
-                {done ? <Check className="size-4" /> : "Not installed"}
+                {done ? (
+                  <Check className="size-4" />
+                ) : item.key === "cli" && status?.cliConflict ? (
+                  "Needs approval"
+                ) : (
+                  "Not installed"
+                )}
               </span>
             </div>
           )
@@ -132,30 +193,6 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
           {error}
         </p>
       ) : null}
-
-      <div className="mt-7 flex items-center justify-between gap-4">
-        <p className="text-xs leading-5 text-muted-foreground">
-          Existing settings are merged and backed up. Codex asks you to trust the new hooks in
-          <code>/hooks</code>.
-        </p>
-        <Button
-          type="button"
-          disabled={installing || allInstalled}
-          onClick={async () => {
-            setInstalling(true)
-            setError(null)
-            try {
-              await onInstall({ cli: true, claude: true, codex: true, autostart: true })
-            } catch (installError) {
-              setError(String(installError))
-            } finally {
-              setInstalling(false)
-            }
-          }}
-        >
-          {allInstalled ? "Ready" : installing ? "Installing…" : "Install integrations"}
-        </Button>
-      </div>
     </main>
   )
 }

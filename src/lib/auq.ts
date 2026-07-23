@@ -47,11 +47,13 @@ export type InstallOptions = {
   claude: boolean
   codex: boolean
   autostart: boolean
+  replaceCli: boolean
 }
 
 export type IntegrationStatus = {
   auqEnabled: boolean
   cli: boolean
+  cliConflict: boolean
   claudeSkill: boolean
   claudeHook: boolean
   codexSkill: boolean

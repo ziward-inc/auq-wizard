@@ -24,6 +24,8 @@ pub struct InstallOptions {
     pub claude: bool,
     pub codex: bool,
     pub autostart: bool,
+    #[serde(default)]
+    pub replace_cli: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -31,6 +33,7 @@ pub struct InstallOptions {
 pub struct IntegrationStatus {
     pub auq_enabled: bool,
     pub cli: bool,
+    pub cli_conflict: bool,
     pub claude_skill: bool,
     pub claude_hook: bool,
     pub codex_skill: bool,
@@ -61,7 +64,7 @@ fn install_integrations_inner(
     let cli_path = home.join(".local/bin/auq");
 
     if options.cli {
-        install_cli_symlink(&cli_path)?;
+        install_cli_symlink(&cli_path, options.replace_cli)?;
     }
     if options.claude {
         install_managed_file(&home.join(".claude/skills/auq/SKILL.md"), CLAUDE_SKILL)?;
@@ -98,10 +101,14 @@ fn integration_status(app: &AppHandle) -> Result<IntegrationStatus> {
     if contains_hook_command(&codex_hooks, "codex-hook") {
         warnings.push("Review and trust the AUQ hooks with /hooks in Codex.".into());
     }
+    let cli_target = std::env::current_exe().context("could not locate AUQ Wizard executable")?;
+    let cli = fs::read_link(&cli_path).ok().as_deref() == Some(cli_target.as_path());
+    let cli_conflict = cli_path.symlink_metadata().is_ok() && !cli;
 
     Ok(IntegrationStatus {
         auq_enabled: crate::preferences::is_enabled()?,
-        cli: cli_path.exists(),
+        cli,
+        cli_conflict,
         claude_skill: home.join(".claude/skills/auq/SKILL.md").exists(),
         claude_hook: contains_hook_command(&claude_settings, "claude-hook"),
         codex_skill: home.join(".agents/skills/auq/SKILL.md").exists(),
@@ -113,7 +120,7 @@ fn integration_status(app: &AppHandle) -> Result<IntegrationStatus> {
     })
 }
 
-fn install_cli_symlink(destination: &Path) -> Result<()> {
+fn install_cli_symlink(destination: &Path, replace_existing: bool) -> Result<()> {
     let target = std::env::current_exe().context("could not locate AUQ Wizard executable")?;
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)?;
@@ -122,10 +129,23 @@ fn install_cli_symlink(destination: &Path) -> Result<()> {
         if fs::read_link(destination).ok().as_deref() == Some(target.as_path()) {
             return Ok(());
         }
-        bail!(
-            "{} already exists and was not replaced; remove it manually if it belongs to an older AUQ installation",
-            destination.display()
-        );
+        if !replace_existing {
+            bail!(
+                "{} already exists; confirm replacement to continue",
+                destination.display()
+            );
+        }
+        let backup = destination.with_extension(format!(
+            "backup.{}",
+            chrono::Utc::now().format("%Y%m%d%H%M%S%3f")
+        ));
+        fs::rename(destination, &backup).with_context(|| {
+            format!(
+                "failed to back up {} to {}",
+                destination.display(),
+                backup.display()
+            )
+        })?;
     }
     symlink(&target, destination).with_context(|| {
         format!(
@@ -336,6 +356,38 @@ fn shell_quote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_install_requires_confirmation_before_replacing() {
+        let root = std::env::temp_dir().join(format!("auq-install-test-{}", uuid::Uuid::now_v7()));
+        let destination = root.join("auq");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&destination, b"old auq").unwrap();
+
+        let error = install_cli_symlink(&destination, false).unwrap_err();
+        assert!(error.to_string().contains("confirm replacement"));
+        assert_eq!(fs::read(&destination).unwrap(), b"old auq");
+
+        install_cli_symlink(&destination, true).unwrap();
+        assert_eq!(
+            fs::read_link(&destination).unwrap(),
+            std::env::current_exe().unwrap()
+        );
+        let backup = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("auq.backup.")
+            })
+            .unwrap();
+        assert_eq!(fs::read(backup).unwrap(), b"old auq");
+
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn shell_quote_handles_spaces_and_quotes() {
