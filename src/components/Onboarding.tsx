@@ -40,24 +40,51 @@ function installed(status: IntegrationStatus | null, key: (typeof ITEMS)[number]
   return status[key]
 }
 
+type IntegrationKey = (typeof ITEMS)[number]["key"]
+type InstallTarget = IntegrationKey | "missing"
+
+function missingInstallOptions(
+  status: IntegrationStatus | null,
+  replaceCli: boolean,
+): InstallOptions {
+  return {
+    cli: !installed(status, "cli"),
+    claude: !installed(status, "claude"),
+    codex: !installed(status, "codex"),
+    autostart: !installed(status, "autostart"),
+    replaceCli,
+  }
+}
+
+function reinstallOptions(key: IntegrationKey): InstallOptions {
+  return {
+    cli: key === "cli",
+    claude: key === "claude",
+    codex: key === "codex",
+    autostart: key === "autostart",
+    replaceCli: false,
+  }
+}
+
 export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps) {
-  const [installing, setInstalling] = useState(false)
+  const [installingTarget, setInstallingTarget] = useState<InstallTarget | null>(null)
   const [confirmingReplace, setConfirmingReplace] = useState(false)
   const [changingRouting, setChangingRouting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const installing = installingTarget !== null
   const installedCount = ITEMS.filter((item) => installed(status, item.key)).length
   const allInstalled = installedCount === ITEMS.length
 
-  const runInstall = async (replaceCli: boolean) => {
-    setInstalling(true)
+  const runInstall = async (options: InstallOptions, target: InstallTarget) => {
+    setInstallingTarget(target)
     setError(null)
     try {
-      await onInstall({ cli: true, claude: true, codex: true, autostart: true, replaceCli })
+      await onInstall(options)
       setConfirmingReplace(false)
     } catch (installError) {
       setError(String(installError))
     } finally {
-      setInstalling(false)
+      setInstallingTarget(null)
     }
   }
 
@@ -92,27 +119,23 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
               desktop workflow.
             </p>
           </div>
-          <Button
-            type="button"
-            size="lg"
-            disabled={installing}
-            onClick={() => {
-              if (status?.cliConflict) {
-                setConfirmingReplace(true)
-                setError(null)
-                return
-              }
-              void runInstall(false)
-            }}
-          >
-            {installing
-              ? allInstalled
-                ? "Reinstalling…"
-                : "Installing…"
-              : allInstalled
-                ? "Reinstall integrations"
-                : "Install integrations"}
-          </Button>
+          {!allInstalled ? (
+            <Button
+              type="button"
+              size="lg"
+              disabled={installing}
+              onClick={() => {
+                if (status?.cliConflict) {
+                  setConfirmingReplace(true)
+                  setError(null)
+                  return
+                }
+                void runInstall(missingInstallOptions(status, false), "missing")
+              }}
+            >
+              {installingTarget === "missing" ? "Installing…" : "Install integrations"}
+            </Button>
+          ) : null}
         </section>
 
         {confirmingReplace ? (
@@ -135,7 +158,7 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
               type="button"
               size="sm"
               disabled={installing}
-              onClick={() => void runInstall(true)}
+              onClick={() => void runInstall(missingInstallOptions(status, true), "missing")}
             >
               {installing ? "Replacing…" : "Replace and install"}
             </Button>
@@ -227,24 +250,38 @@ export function Onboarding({ status, onInstall, onSetEnabled }: OnboardingProps)
                         {item.description}
                       </p>
                     </div>
-                    <span
-                      className={
-                        done
-                          ? "flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-                          : "text-xs text-muted-foreground"
-                      }
-                    >
+                    <div className="flex shrink-0 items-center gap-2.5">
+                      <span
+                        className={
+                          done
+                            ? "flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                            : "text-xs text-muted-foreground"
+                        }
+                      >
+                        {done ? (
+                          <>
+                            <Check className="size-3.5" />
+                            Ready
+                          </>
+                        ) : item.key === "cli" && status?.cliConflict ? (
+                          "Needs approval"
+                        ) : (
+                          "Not installed"
+                        )}
+                      </span>
                       {done ? (
-                        <>
-                          <Check className="size-3.5" />
-                          Ready
-                        </>
-                      ) : item.key === "cli" && status?.cliConflict ? (
-                        "Needs approval"
-                      ) : (
-                        "Not installed"
-                      )}
-                    </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          aria-label={`Reinstall ${item.label}`}
+                          disabled={installing}
+                          onClick={() => void runInstall(reinstallOptions(item.key), item.key)}
+                        >
+                          {installingTarget === item.key ? "Reinstalling…" : "Reinstall"}
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 )
               })}

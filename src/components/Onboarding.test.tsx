@@ -19,7 +19,7 @@ const STATUS: IntegrationStatus = {
 }
 
 describe("Onboarding", () => {
-  it("keeps the reinstall action available when every integration is ready", async () => {
+  it("offers a separate reinstall action for every ready integration", async () => {
     const onInstall = vi.fn().mockResolvedValue(undefined)
     render(
       <Onboarding
@@ -29,25 +29,52 @@ describe("Onboarding", () => {
       />,
     )
 
-    const reinstallButton = screen.getByRole("button", { name: "Reinstall integrations" })
-    expect(reinstallButton).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "Install integrations" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Reinstall integrations" })).not.toBeInTheDocument()
 
-    await userEvent.click(reinstallButton)
-
-    expect(onInstall).toHaveBeenCalledWith({
+    await userEvent.click(screen.getByRole("button", { name: "Reinstall CLI" }))
+    expect(onInstall).toHaveBeenLastCalledWith({
       cli: true,
+      claude: false,
+      codex: false,
+      autostart: false,
+      replaceCli: false,
+    })
+
+    await userEvent.click(screen.getByRole("button", { name: "Reinstall Claude Code" }))
+    expect(onInstall).toHaveBeenLastCalledWith({
+      cli: false,
       claude: true,
+      codex: false,
+      autostart: false,
+      replaceCli: false,
+    })
+
+    await userEvent.click(screen.getByRole("button", { name: "Reinstall Codex" }))
+    expect(onInstall).toHaveBeenLastCalledWith({
+      cli: false,
+      claude: false,
       codex: true,
+      autostart: false,
+      replaceCli: false,
+    })
+
+    await userEvent.click(screen.getByRole("button", { name: "Reinstall Launch at login" }))
+    expect(onInstall).toHaveBeenLastCalledWith({
+      cli: false,
+      claude: false,
+      codex: false,
       autostart: true,
       replaceCli: false,
     })
   })
 
-  it("places the install action before integration settings", () => {
+  it("places the missing-integration install action before integration settings", async () => {
+    const onInstall = vi.fn().mockResolvedValue(undefined)
     render(
       <Onboarding
         status={{ ...STATUS, cli: false }}
-        onInstall={vi.fn().mockResolvedValue(undefined)}
+        onInstall={onInstall}
         onSetEnabled={vi.fn().mockResolvedValue(undefined)}
       />,
     )
@@ -58,6 +85,15 @@ describe("Onboarding", () => {
     expect(installButton.compareDocumentPosition(routingHeading)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     )
+
+    await userEvent.click(installButton)
+    expect(onInstall).toHaveBeenCalledWith({
+      cli: true,
+      claude: false,
+      codex: false,
+      autostart: false,
+      replaceCli: false,
+    })
   })
 
   it("requires approval before replacing an existing CLI", async () => {
@@ -80,9 +116,9 @@ describe("Onboarding", () => {
 
     expect(onInstall).toHaveBeenCalledWith({
       cli: true,
-      claude: true,
-      codex: true,
-      autostart: true,
+      claude: false,
+      codex: false,
+      autostart: false,
       replaceCli: true,
     })
   })
