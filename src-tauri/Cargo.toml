@@ -2,8 +2,8 @@
 name = "auq-wizard"
 version = "0.2.4"
 description = "A GUI question broker for coding agents"
-authors = ["Ziward"]
-license = "MIT"
+authors = ["Ziward, Inc."]
+license = "Apache-2.0"
 repository = "https://github.com/ziward-inc/auq-wizard"
 edition = "2021"
 rust-version = "1.77.2"
