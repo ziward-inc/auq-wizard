@@ -17,17 +17,17 @@ The socket lives at `/tmp/auq-wizard-<uid>/auq.sock` with mode `0600`. Requests 
 
 ## Install
 
-Install the latest Apple Silicon macOS release with either command:
+Install the latest Apple Silicon macOS 11.0+ release with either command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ziward-inc/auq-wizard/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ziward-inc/auq-wizard/main/install.sh | bash
 ```
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/ziward-inc/auq-wizard/main/install.sh | sh
+wget -qO- https://raw.githubusercontent.com/ziward-inc/auq-wizard/main/install.sh | bash
 ```
 
-The installer verifies the release checksum, installs the app to `~/Applications/auq-wizard.app`, and opens its setup screen. Select **Install integrations** once to add the `auq` CLI, Claude Code and Codex skills, hooks, and login launch.
+The installer verifies the release checksum, installs the app to `~/Applications/auq-wizard.app`, clears its quarantine attribute, and opens its setup screen. A different installed version is updated automatically; reinstalling the current version requires confirmation in an interactive terminal. Use **Install integrations** or **Reinstall integrations** to add or refresh the `auq` CLI, Claude Code and Codex skills, hooks, and login launch.
 
 ## Build
 
